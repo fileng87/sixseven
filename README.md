@@ -1,0 +1,60 @@
+# sixseven
+
+A tiny Rust interpreter for the **sixseven** language, born from the **“67” meme**.
+
+Source code may contain **only** `67`, `🫲`, `🫱`, `🤷`, plus newlines (`\n` / `\r` / `\r\n`).  
+Everything else (including spaces/tabs) is **illegal**.
+
+## Execution model
+
+- Infinite tape of integer cells (`BigInt`, **no overflow**)
+- One data pointer (starts at cell 0); all cells start at 0
+
+## Core semantics (M0 default)
+
+- `🫱`: current cell += 1
+- `🫲`: current cell -= 1
+- `🤷`: output current cell as a **Unicode code point**
+- `67`: starts a *number-like* construct (number / input / pointer move) or a control block
+
+## Number blocks (M1: integer parsing)
+
+Syntax: `67` bit_seq `🤷`
+
+- `🫱` = bit `1`, `🫲` = bit `0` → parse binary integer \(N\)
+- End-of-block behavior (**extensions** to avoid adding tokens):
+  - `67🤷` (empty bit_seq): read **1 Unicode scalar** from input and **overwrite** current cell with its code point (EOF → `0`)
+  - `67🫲🤷` (bit_seq non-empty and \(N=0\)): move pointer **left** by 1
+  - `67🫱🤷` (bit_seq non-empty and \(N=1\)): move pointer **right** by 1
+  - otherwise: current cell += \(N\)
+
+## Control blocks (M2: while block)
+
+Syntax: `67 67` block `🤷`
+
+Semantics: `while (current cell ≠ 0) { execute block }`
+
+Inside a block definition:
+- `🤷` ends the **current** block
+- `🤷🤷` is a literal output instruction inside the block body (also enables nesting)
+
+## CLI
+
+- Program from file, input from stdin:
+
+```bash
+cargo run -- program.67
+```
+
+- Program from file, input from file (second argument):
+
+```bash
+cargo run -- program.67 input.txt
+```
+
+## Examples
+
+- `example/hello_world.67`: prints `Hello, world!`
+- `example/echo.67`: reads 1 char and prints it (source is `67🤷🤷`)
+
+
