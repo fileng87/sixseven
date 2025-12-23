@@ -2,8 +2,8 @@
 
 A tiny Rust interpreter for the **sixseven** language, born from the **“67” meme**.
 
-Source code may contain **only** `67`, `🫲`, `🫱`, `🤷`, plus newlines (`\n` / `\r` / `\r\n`).  
-Everything else (including spaces/tabs) is **illegal**.
+Source code may contain **only** `67`, `🫲`, `🫱`, `🤷`, plus whitespace (`\n` / `\r` / `\r\n` / space / tab).  
+Everything else is **illegal**.
 
 ## Execution model
 

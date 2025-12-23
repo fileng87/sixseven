@@ -30,8 +30,8 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, Error> {
 
     while let Some((i, ch)) = it.next() {
         match ch {
-            // Allowed newlines (Windows / Unix)
-            '\n' | '\r' => {}
+            // Allowed whitespace: newlines (Windows / Unix) + spaces + tabs
+            '\n' | '\r' | ' ' | '\t' => {}
             '🫱' => out.push(Token::Inc),
             '🫲' => out.push(Token::Dec),
             '🤷' => out.push(Token::Out),
@@ -352,8 +352,14 @@ mod tests {
     }
 
     #[test]
-    fn rejects_spaces() {
-        let err = tokenize("🫱 🫲").unwrap_err();
+    fn allows_spaces_and_tabs() {
+        let toks = tokenize("🫱 \t🫲").unwrap();
+        assert_eq!(toks, vec![Token::Inc, Token::Dec]);
+    }
+
+    #[test]
+    fn rejects_other_chars() {
+        let err = tokenize("🫱x🫲").unwrap_err();
         matches!(err, Error::IllegalChar { .. });
     }
 
