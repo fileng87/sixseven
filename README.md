@@ -2,8 +2,9 @@
 
 A tiny Rust interpreter for the **sixseven** language, born from the **“67” meme**.
 
-Source code may contain **only** `67`, `🫲`, `🫱`, `🤷`, plus whitespace (`\n` / `\r` / `\r\n` / space / tab).  
-Everything else is **illegal**.
+The language has only four instructions: `67`, `🫲`, `🫱`, `🤷`.
+
+Any other character is treated as a **comment** and ignored. (`6` not followed by `7` is ignored too.)
 
 ## Execution model
 
@@ -55,6 +56,7 @@ cargo run -- program.67 input.txt
 ## Examples
 
 - `example/hello_world.67`: prints `Hello, world!`
+- `example/hello_input.67`: prints `Hello ` + echoes all input until **EOF** + prints `!` (so if your input includes newlines, they will be echoed too)
 - `example/echo.67`: reads 1 char and prints it (source is `67🤷🤷`)
 
 

@@ -13,8 +13,6 @@ pub enum Token {
 
 #[derive(Debug)]
 pub enum Error {
-    IllegalChar { byte_index: usize, ch: char },
-    DanglingSix { byte_index: usize },
     UnterminatedNumberBlock { token_index: usize },
     IllegalTokenInNumberBlock { token_index: usize },
     UnterminatedControlBlock { token_index: usize },
@@ -28,10 +26,8 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, Error> {
     let mut out = Vec::new();
     let mut it = input.char_indices().peekable();
 
-    while let Some((i, ch)) = it.next() {
+    while let Some((_i, ch)) = it.next() {
         match ch {
-            // Allowed whitespace: newlines (Windows / Unix) + spaces + tabs
-            '\n' | '\r' | ' ' | '\t' => {}
             '🫱' => out.push(Token::Inc),
             '🫲' => out.push(Token::Dec),
             '🤷' => out.push(Token::Out),
@@ -40,10 +36,13 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, Error> {
                     it.next();
                     out.push(Token::SixSeven);
                 }
-                Some((_, _)) => return Err(Error::IllegalChar { byte_index: i, ch }),
-                None => return Err(Error::DanglingSix { byte_index: i }),
+                _ => {
+                    // Non-instruction: treat as comment (Brainfuck-style).
+                }
             },
-            _ => return Err(Error::IllegalChar { byte_index: i, ch }),
+            _ => {
+                // Non-instruction: treat as comment (Brainfuck-style).
+            }
         }
     }
 
@@ -358,9 +357,9 @@ mod tests {
     }
 
     #[test]
-    fn rejects_other_chars() {
-        let err = tokenize("🫱x🫲").unwrap_err();
-        matches!(err, Error::IllegalChar { .. });
+    fn ignores_non_instructions_as_comments() {
+        let toks = tokenize("🫱x🫲").unwrap();
+        assert_eq!(toks, vec![Token::Inc, Token::Dec]);
     }
 
     #[test]
