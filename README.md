@@ -11,7 +11,7 @@ Any other character is treated as a **comment** and ignored. (`6` not followed b
 - Infinite tape of integer cells (`BigInt`, **no overflow**)
 - One data pointer (starts at cell 0); all cells start at 0
 
-## Core semantics (M0 default)
+## Core semantics
 
 - `🫱`: current cell += 1
 - `🫲`: current cell -= 1
