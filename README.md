@@ -43,7 +43,7 @@ Inside a block definition:
 
 ### REPL Mode
 
-Enter interactive REPL mode (like Python or Node.js):
+Enter interactive REPL mode:
 
 ```bash
 cargo run
