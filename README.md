@@ -86,6 +86,6 @@ sixseven program.67 input.txt
 
 ## Examples
 
-- `example/hello_world.67`: prints `Hello, world!`
-- `example/hello_input.67`: prints `Hello `, then reads and echoes input until newline or EOF, then prints `!` (e.g., input `World` produces `Hello World!`)
+- `example/hello_world.67`: prints `Hello, World!`
+- `example/hello_input.67`: prints `Hello, `, then reads and echoes input until newline or EOF, then prints `!` (e.g., input `World` produces `Hello, World!`)
 - `example/echo.67`: reads 1 char and prints it (source is `67🤷🤷`)
