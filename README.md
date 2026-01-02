@@ -41,22 +41,51 @@ Inside a block definition:
 
 ## CLI
 
-- Program from file, input from stdin:
+### REPL Mode
+
+Enter interactive REPL mode (like Python or Node.js):
+
+```bash
+cargo run
+# or
+sixseven
+```
+
+In REPL mode:
+- Enter code line by line and execute immediately
+- Type `exit` or `quit` to exit
+- Press Ctrl+D (Unix) or Ctrl+Z (Windows) to exit
+
+### Execute Code from Command Line
+
+Execute code directly (like `node -e`):
+
+```bash
+cargo run -- -e "67🫱🫲🫲🫲🫲🫲🫱🤷🤷"
+# or
+sixseven -e "67🫱🫲🫲🫲🫲🫲🫱🤷🤷"
+```
+
+### Execute File
+
+- Program from file, input from stdin (default):
 
 ```bash
 cargo run -- program.67
+# or
+sixseven program.67
 ```
 
-- Program from file, input from file (second argument):
+- Program from file, input from file:
 
 ```bash
 cargo run -- program.67 input.txt
+# or
+sixseven program.67 input.txt
 ```
 
 ## Examples
 
 - `example/hello_world.67`: prints `Hello, world!`
-- `example/hello_input.67`: prints `Hello ` + echoes all input until **EOF** + prints `!` (so if your input includes newlines, they will be echoed too)
+- `example/hello_input.67`: prints `Hello `, then reads and echoes input until newline or EOF, then prints `!` (e.g., input `World` produces `Hello World!`)
 - `example/echo.67`: reads 1 char and prints it (source is `67🤷🤷`)
-
-
