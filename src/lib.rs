@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 static BIGINT_ONE: OnceLock<BigInt> = OnceLock::new();
 
 fn bigint_one() -> &'static BigInt {
-    BIGINT_ONE.get_or_init(|| BigInt::one())
+    BIGINT_ONE.get_or_init(BigInt::one)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,9 +69,7 @@ impl Machine {
     }
 
     fn cell_is_zero(&self) -> bool {
-        self.tape
-            .get(&self.ptr)
-            .map_or(true, |v| v.is_zero())
+        self.tape.get(&self.ptr).is_none_or(|v| v.is_zero())
     }
 }
 
@@ -310,7 +308,12 @@ fn exec_program(
     Ok(())
 }
 
-fn exec_stmt(s: &Stmt, m: &mut Machine, out: &mut String, input: &mut dyn Read) -> Result<(), Error> {
+fn exec_stmt(
+    s: &Stmt,
+    m: &mut Machine,
+    out: &mut String,
+    input: &mut dyn Read,
+) -> Result<(), Error> {
     match s {
         Stmt::Inc => *m.cell_mut() += bigint_one(),
         Stmt::Dec => *m.cell_mut() -= bigint_one(),
@@ -337,7 +340,9 @@ fn exec_stmt(s: &Stmt, m: &mut Machine, out: &mut String, input: &mut dyn Read) 
                 return Err(Error::InvalidCodePoint { value: v.clone() });
             };
             let Some(ch) = char::from_u32(cp) else {
-                return Err(Error::InvalidCodePoint { value: BigInt::from(cp) });
+                return Err(Error::InvalidCodePoint {
+                    value: BigInt::from(cp),
+                });
             };
             out.push(ch);
         }
@@ -429,5 +434,3 @@ mod tests {
         assert_eq!(out, "\u{2}\u{1}");
     }
 }
-
-
