@@ -4,31 +4,49 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::sync::OnceLock;
 
+/// Static cache for BigInt::one() to avoid repeated allocations in hot paths.
 static BIGINT_ONE: OnceLock<BigInt> = OnceLock::new();
 
+/// Returns a cached reference to BigInt::one().
+/// This avoids creating a new BigInt instance on every Inc/Dec operation.
 fn bigint_one() -> &'static BigInt {
     BIGINT_ONE.get_or_init(BigInt::one)
 }
 
+/// Tokens in the sixseven language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Token {
-    Inc,      // 🫱
-    Dec,      // 🫲
-    Out,      // 🤷
-    SixSeven, // 67
+    /// Increment current cell by 1 (🫱)
+    Inc,
+    /// Decrement current cell by 1 (🫲)
+    Dec,
+    /// Output current cell as Unicode code point (🤷)
+    Out,
+    /// Start of number block or control block (67)
+    SixSeven,
 }
 
+/// Errors that can occur during parsing or execution.
 #[derive(Debug)]
 pub enum Error {
+    /// A number block (67...🤷) was not properly terminated.
     UnterminatedNumberBlock { token_index: usize },
+    /// A number block contained an illegal token (67).
     IllegalTokenInNumberBlock { token_index: usize },
+    /// A control block (67 67...🤷) was not properly terminated.
     UnterminatedControlBlock { token_index: usize },
+    /// An unexpected token was encountered.
     UnexpectedToken { token_index: usize },
+    /// Attempted to output an invalid Unicode code point.
     InvalidCodePoint { value: BigInt },
+    /// I/O error occurred while reading input.
     Io(std::io::Error),
+    /// Input contained invalid UTF-8.
     InvalidUtf8Input,
 }
 
+/// Tokenizes the input string into a sequence of tokens.
+/// Non-instruction characters are treated as comments and ignored.
 pub fn tokenize(input: &str) -> Result<Vec<Token>, Error> {
     // Pre-allocate with estimated capacity (most chars are comments, so reserve less)
     let mut out = Vec::with_capacity(input.len() / 4);
@@ -57,37 +75,47 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, Error> {
     Ok(out)
 }
 
+/// The execution machine with an infinite tape of integer cells.
 #[derive(Debug, Default)]
 struct Machine {
+    /// Current data pointer position.
     ptr: i64,
+    /// Sparse tape: only non-zero cells are stored in the HashMap.
     tape: HashMap<i64, BigInt>,
 }
 
 impl Machine {
+    /// Returns a mutable reference to the current cell, initializing it to zero if needed.
     fn cell_mut(&mut self) -> &mut BigInt {
         self.tape.entry(self.ptr).or_insert_with(BigInt::zero)
     }
 
+    /// Checks if the current cell is zero without cloning the value.
+    /// This is optimized for the hot path in While loops.
     fn cell_is_zero(&self) -> bool {
         self.tape.get(&self.ptr).is_none_or(|v| v.is_zero())
     }
 }
 
+/// Executes source code with empty input.
 pub fn run_source(source: &str) -> Result<String, Error> {
     let tokens = tokenize(source)?;
     run_tokens(&tokens)
 }
 
+/// Executes tokens with empty input.
 pub fn run_tokens(tokens: &[Token]) -> Result<String, Error> {
     let mut input = std::io::empty();
     run_tokens_with_input(tokens, &mut input)
 }
 
+/// Executes source code with the given input stream.
 pub fn run_source_with_input(source: &str, input: &mut dyn Read) -> Result<String, Error> {
     let tokens = tokenize(source)?;
     run_tokens_with_input(&tokens, input)
 }
 
+/// Executes tokens with the given input stream.
 pub fn run_tokens_with_input(tokens: &[Token], input: &mut dyn Read) -> Result<String, Error> {
     let program = parse_program_m0(tokens)?;
     let mut m = Machine::default();
@@ -97,6 +125,8 @@ pub fn run_tokens_with_input(tokens: &[Token], input: &mut dyn Read) -> Result<S
     Ok(out)
 }
 
+/// Reads a single Unicode scalar value from the input stream.
+/// Returns None on EOF, or an error if the input is invalid UTF-8.
 fn read_one_char(input: &mut dyn Read) -> Result<Option<char>, Error> {
     let mut buf = Vec::<u8>::with_capacity(4); // UTF-8 char max length
     let mut byte = [0u8; 1];
@@ -139,18 +169,28 @@ fn read_one_char(input: &mut dyn Read) -> Result<Option<char>, Error> {
     }
 }
 
+/// Abstract syntax tree nodes representing program statements.
 #[derive(Debug, Clone)]
 enum Stmt {
+    /// Increment current cell by 1.
     Inc,
+    /// Decrement current cell by 1.
     Dec,
+    /// Output current cell as Unicode code point.
     Out,
-    InputChar, // `67🤷` (empty bit_seq)
-    MoveRight, // `67🫱🤷` (N==1)
-    MoveLeft,  // `67🫲🤷` (N==0, with at least one bit)
+    /// Read one character from input (67🤷 with empty bit sequence).
+    InputChar,
+    /// Move pointer right by 1 (67🫱🤷, N==1).
+    MoveRight,
+    /// Move pointer left by 1 (67🫲🤷, N==0 with at least one bit).
+    MoveLeft,
+    /// Add the given value to current cell.
     Add(BigInt),
+    /// While loop: execute body while current cell is non-zero.
     While(Vec<Stmt>),
 }
 
+/// Parses a sequence of tokens into a program (M0 mode: top-level statements).
 fn parse_program_m0(tokens: &[Token]) -> Result<Vec<Stmt>, Error> {
     let mut i = 0usize;
     // Pre-allocate with estimated capacity (most tokens become statements)
@@ -161,6 +201,7 @@ fn parse_program_m0(tokens: &[Token]) -> Result<Vec<Stmt>, Error> {
     Ok(out)
 }
 
+/// Parses a single statement in M0 mode (top-level).
 fn parse_stmt_m0(tokens: &[Token], i: &mut usize) -> Result<Stmt, Error> {
     let Some(tok) = tokens.get(*i).copied() else {
         return Err(Error::UnexpectedToken { token_index: *i });
@@ -180,18 +221,19 @@ fn parse_stmt_m0(tokens: &[Token], i: &mut usize) -> Result<Stmt, Error> {
         }
         Token::SixSeven => {
             if tokens.get(*i + 1) == Some(&Token::SixSeven) {
-                // control block: 67 67 ... 🤷  (in M2: single 🤷 closes, 🤷🤷 encodes literal output)
+                // Control block: 67 67 ... 🤷 (in M2: single 🤷 closes, 🤷🤷 encodes literal output)
                 *i += 2;
                 let body = parse_block_m2(tokens, i)?;
                 Ok(Stmt::While(body))
             } else {
-                // number block / input / pointer move
+                // Number block / input / pointer move
                 parse_number_like(tokens, i)
             }
         }
     }
 }
 
+/// Parses a single statement in M2 mode (inside control blocks).
 fn parse_stmt_m2(tokens: &[Token], i: &mut usize) -> Result<Stmt, Error> {
     let Some(tok) = tokens.get(*i).copied() else {
         return Err(Error::UnterminatedControlBlock {
@@ -229,6 +271,8 @@ fn parse_stmt_m2(tokens: &[Token], i: &mut usize) -> Result<Stmt, Error> {
     }
 }
 
+/// Parses a control block body (M2 mode).
+/// A single 🤷 terminates the block; 🤷🤷 is an escaped output instruction.
 fn parse_block_m2(tokens: &[Token], i: &mut usize) -> Result<Vec<Stmt>, Error> {
     // Pre-allocate with estimated capacity based on remaining tokens
     let remaining = tokens.len().saturating_sub(*i);
@@ -256,10 +300,16 @@ fn parse_block_m2(tokens: &[Token], i: &mut usize) -> Result<Vec<Stmt>, Error> {
     }
 }
 
+/// Parses a number block: 67 [bit_seq] 🤷
+/// Special cases:
+/// - Empty bit sequence (67🤷): InputChar
+/// - N==0 with bits: MoveLeft
+/// - N==1: MoveRight
+/// - Otherwise: Add(N)
 fn parse_number_like(tokens: &[Token], i: &mut usize) -> Result<Stmt, Error> {
-    // expects current token is 67
+    // Expects current token is 67
     let start = *i;
-    *i += 1; // consume 67
+    *i += 1; // Consume 67
     let mut n = BigInt::zero();
     let mut bits = 0usize;
     while *i < tokens.len() {
@@ -276,13 +326,13 @@ fn parse_number_like(tokens: &[Token], i: &mut usize) -> Result<Stmt, Error> {
                 *i += 1;
             }
             Token::Out => {
-                *i += 1; // consume terminator
+                *i += 1; // Consume terminator
                 if bits == 0 {
-                    // extension: input op
+                    // Extension: input op
                     return Ok(Stmt::InputChar);
                 }
                 if n.is_zero() {
-                    // extension: pointer left (still uses a number block so it only triggers when bits exist)
+                    // Extension: pointer left (still uses a number block so it only triggers when bits exist)
                     return Ok(Stmt::MoveLeft);
                 }
                 if &n == bigint_one() {
@@ -296,6 +346,7 @@ fn parse_number_like(tokens: &[Token], i: &mut usize) -> Result<Stmt, Error> {
     Err(Error::UnterminatedNumberBlock { token_index: start })
 }
 
+/// Executes a program by running each statement in sequence.
 fn exec_program(
     program: &[Stmt],
     m: &mut Machine,
@@ -308,6 +359,7 @@ fn exec_program(
     Ok(())
 }
 
+/// Executes a single statement.
 fn exec_stmt(
     s: &Stmt,
     m: &mut Machine,
@@ -328,7 +380,7 @@ fn exec_stmt(
             let v = match m.tape.get(&m.ptr) {
                 Some(v) => v,
                 None => {
-                    // Cell is zero, output NUL
+                    // Cell is zero (not in HashMap), output NUL
                     out.push('\0');
                     return Ok(());
                 }
@@ -347,6 +399,7 @@ fn exec_stmt(
             out.push(ch);
         }
         Stmt::While(body) => {
+            // Loop while current cell is non-zero (optimized to avoid cloning)
             while !m.cell_is_zero() {
                 exec_program(body, m, out, input)?;
             }
