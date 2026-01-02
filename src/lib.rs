@@ -2,6 +2,13 @@ use num_bigint::BigInt;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::collections::HashMap;
 use std::io::Read;
+use std::sync::OnceLock;
+
+static BIGINT_ONE: OnceLock<BigInt> = OnceLock::new();
+
+fn bigint_one() -> &'static BigInt {
+    BIGINT_ONE.get_or_init(|| BigInt::one())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Token {
@@ -23,16 +30,17 @@ pub enum Error {
 }
 
 pub fn tokenize(input: &str) -> Result<Vec<Token>, Error> {
-    let mut out = Vec::new();
-    let mut it = input.char_indices().peekable();
+    // Pre-allocate with estimated capacity (most chars are comments, so reserve less)
+    let mut out = Vec::with_capacity(input.len() / 4);
+    let mut it = input.chars().peekable();
 
-    while let Some((_i, ch)) = it.next() {
+    while let Some(ch) = it.next() {
         match ch {
             '🫱' => out.push(Token::Inc),
             '🫲' => out.push(Token::Dec),
             '🤷' => out.push(Token::Out),
             '6' => match it.peek() {
-                Some((_, '7')) => {
+                Some(&'7') => {
                     it.next();
                     out.push(Token::SixSeven);
                 }
@@ -60,8 +68,10 @@ impl Machine {
         self.tape.entry(self.ptr).or_insert_with(BigInt::zero)
     }
 
-    fn cell(&self) -> BigInt {
-        self.tape.get(&self.ptr).cloned().unwrap_or_else(BigInt::zero)
+    fn cell_is_zero(&self) -> bool {
+        self.tape
+            .get(&self.ptr)
+            .map_or(true, |v| v.is_zero())
     }
 }
 
@@ -83,13 +93,14 @@ pub fn run_source_with_input(source: &str, input: &mut dyn Read) -> Result<Strin
 pub fn run_tokens_with_input(tokens: &[Token], input: &mut dyn Read) -> Result<String, Error> {
     let program = parse_program_m0(tokens)?;
     let mut m = Machine::default();
-    let mut out = String::new();
+    // Pre-allocate output string with estimated capacity
+    let mut out = String::with_capacity(tokens.len() / 2);
     exec_program(&program, &mut m, &mut out, input)?;
     Ok(out)
 }
 
 fn read_one_char(input: &mut dyn Read) -> Result<Option<char>, Error> {
-    let mut buf = Vec::<u8>::new();
+    let mut buf = Vec::<u8>::with_capacity(4); // UTF-8 char max length
     let mut byte = [0u8; 1];
 
     loop {
@@ -144,7 +155,8 @@ enum Stmt {
 
 fn parse_program_m0(tokens: &[Token]) -> Result<Vec<Stmt>, Error> {
     let mut i = 0usize;
-    let mut out = Vec::new();
+    // Pre-allocate with estimated capacity (most tokens become statements)
+    let mut out = Vec::with_capacity(tokens.len());
     while i < tokens.len() {
         out.push(parse_stmt_m0(tokens, &mut i)?);
     }
@@ -220,7 +232,9 @@ fn parse_stmt_m2(tokens: &[Token], i: &mut usize) -> Result<Stmt, Error> {
 }
 
 fn parse_block_m2(tokens: &[Token], i: &mut usize) -> Result<Vec<Stmt>, Error> {
-    let mut body = Vec::new();
+    // Pre-allocate with estimated capacity based on remaining tokens
+    let remaining = tokens.len().saturating_sub(*i);
+    let mut body = Vec::with_capacity(remaining.min(64)); // Cap at 64 to avoid over-allocation
     loop {
         let Some(tok) = tokens.get(*i).copied() else {
             return Err(Error::UnterminatedControlBlock {
@@ -254,7 +268,7 @@ fn parse_number_like(tokens: &[Token], i: &mut usize) -> Result<Stmt, Error> {
         match tokens[*i] {
             Token::Inc => {
                 n <<= 1;
-                n += BigInt::one();
+                n += bigint_one();
                 bits += 1;
                 *i += 1;
             }
@@ -273,7 +287,7 @@ fn parse_number_like(tokens: &[Token], i: &mut usize) -> Result<Stmt, Error> {
                     // extension: pointer left (still uses a number block so it only triggers when bits exist)
                     return Ok(Stmt::MoveLeft);
                 }
-                if n == BigInt::one() {
+                if &n == bigint_one() {
                     return Ok(Stmt::MoveRight);
                 }
                 return Ok(Stmt::Add(n));
@@ -298,8 +312,8 @@ fn exec_program(
 
 fn exec_stmt(s: &Stmt, m: &mut Machine, out: &mut String, input: &mut dyn Read) -> Result<(), Error> {
     match s {
-        Stmt::Inc => *m.cell_mut() += BigInt::one(),
-        Stmt::Dec => *m.cell_mut() -= BigInt::one(),
+        Stmt::Inc => *m.cell_mut() += bigint_one(),
+        Stmt::Dec => *m.cell_mut() -= bigint_one(),
         Stmt::Add(n) => *m.cell_mut() += n,
         Stmt::MoveRight => m.ptr += 1,
         Stmt::MoveLeft => m.ptr -= 1,
@@ -308,12 +322,19 @@ fn exec_stmt(s: &Stmt, m: &mut Machine, out: &mut String, input: &mut dyn Read) 
             *m.cell_mut() = BigInt::from(ch as u32);
         }
         Stmt::Out => {
-            let v = m.cell();
+            let v = match m.tape.get(&m.ptr) {
+                Some(v) => v,
+                None => {
+                    // Cell is zero, output NUL
+                    out.push('\0');
+                    return Ok(());
+                }
+            };
             if v.is_negative() {
-                return Err(Error::InvalidCodePoint { value: v });
+                return Err(Error::InvalidCodePoint { value: v.clone() });
             }
             let Some(cp) = v.to_u32() else {
-                return Err(Error::InvalidCodePoint { value: v });
+                return Err(Error::InvalidCodePoint { value: v.clone() });
             };
             let Some(ch) = char::from_u32(cp) else {
                 return Err(Error::InvalidCodePoint { value: BigInt::from(cp) });
@@ -321,7 +342,7 @@ fn exec_stmt(s: &Stmt, m: &mut Machine, out: &mut String, input: &mut dyn Read) 
             out.push(ch);
         }
         Stmt::While(body) => {
-            while !m.cell().is_zero() {
+            while !m.cell_is_zero() {
                 exec_program(body, m, out, input)?;
             }
         }
