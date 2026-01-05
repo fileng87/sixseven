@@ -63,11 +63,11 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, Error> {
                     out.push(Token::SixSeven);
                 }
                 _ => {
-                    // Non-instruction: treat as comment (Brainfuck-style).
+                    // Non-instruction: treat as comment.
                 }
             },
             _ => {
-                // Non-instruction: treat as comment (Brainfuck-style).
+                // Non-instruction: treat as comment.
             }
         }
     }
